@@ -47,7 +47,6 @@ const COLORS = [
 const DEPTH_VERTEX = `
   in vec2 aPosition;
   out vec2 vTextureCoord;
-  out vec2 vFilterCoord;
 
   uniform vec4 uInputSize;
   uniform vec4 uOutputFrame;
@@ -67,7 +66,6 @@ const DEPTH_VERTEX = `
   void main(void) {
     gl_Position = filterVertexPosition();
     vTextureCoord = filterTextureCoord();
-    vFilterCoord = vTextureCoord * uInputSize.xy / uOutputFrame.zw;
   }
 `;
 
@@ -75,7 +73,6 @@ const DEPTH_FRAGMENT = `
   precision highp float;
 
   in vec2 vTextureCoord;
-  in vec2 vFilterCoord;
   out vec4 finalColor;
 
   uniform sampler2D uTexture;
@@ -238,7 +235,7 @@ class NodeTextureCache {
 }
 
 // ============================================================================
-// NEURAL NODE (Optimized - uses sprite instead of graphics)
+// NEURAL NODE (Using pre-built graphics layers like bioluminescent-ocean)
 // ============================================================================
 
 class NeuralNode {
@@ -246,11 +243,16 @@ class NeuralNode {
     this.classes = ctx.classes;
     this.config = config;
     this.textureCache = textureCache;
-    
-    // Single sprite instead of 5 graphics objects
-    this.sprite = new this.classes.Sprite();
-    this.sprite.anchor.set(0.5);
-    
+
+    // Create container to hold all glow layers
+    this.container = new this.classes.Container();
+    this.container.blendMode = 'add';
+
+    // Pre-create static glow layers (instead of redrawing each frame)
+    // This matches the pattern used in bioluminescent-ocean
+    this._glowLayers = [];
+    this._createGlowLayers();
+
     this.x3d = 0;
     this.y3d = 0;
     this.z3d = 0;
@@ -259,24 +261,77 @@ class NeuralNode {
     this.screenScale = 0;
     this.screenAlpha = 0;
     this.currentSize = 0;
-    
+
     this.reset(true);
   }
-  
+
+  _createGlowLayers() {
+    // Create 5 glow layers from outer to inner (similar to working demo)
+    // Each layer is a separate Graphics object for proper blending
+    // Use WHITE base color so tint works correctly (tint multiplies color)
+
+    // Outer glow (largest, most transparent)
+    const glowOuter = new this.classes.Graphics();
+    glowOuter.circle(0, 0, 50);
+    glowOuter.fill({ color: 0xFFFFFF, alpha: 0.03 });
+    this._glowLayers.push(glowOuter);
+    this.container.addChild(glowOuter);
+
+    // Mid glow
+    const glowMid = new this.classes.Graphics();
+    glowMid.circle(0, 0, 35);
+    glowMid.fill({ color: 0xFFFFFF, alpha: 0.05 });
+    this._glowLayers.push(glowMid);
+    this.container.addChild(glowMid);
+
+    // Inner glow
+    const glowInner = new this.classes.Graphics();
+    glowInner.circle(0, 0, 20);
+    glowInner.fill({ color: 0xFFFFFF, alpha: 0.12 });
+    this._glowLayers.push(glowInner);
+    this.container.addChild(glowInner);
+
+    // Core
+    const core = new this.classes.Graphics();
+    core.circle(0, 0, 10);
+    core.fill({ color: 0xFFFFFF, alpha: 0.6 });
+    this._glowLayers.push(core);
+    this.container.addChild(core);
+
+    // Center (brightest) - stays white
+    const center = new this.classes.Graphics();
+    center.circle(0, 0, 4);
+    center.fill({ color: 0xFFFFFF, alpha: 0.9 });
+    this._glowLayers.push(center);
+    this.container.addChild(center);
+  }
+
+  _updateGlowColors() {
+    // Update glow layer colors based on node's color scheme
+    // Tint multiplies the base color (white), so we get the exact color we want
+    if (this._glowLayers.length >= 5) {
+      this._glowLayers[0].tint = this.glowColor;
+      this._glowLayers[1].tint = this.glowColor;
+      this._glowLayers[2].tint = this.color;
+      this._glowLayers[3].tint = this.color;
+      // Keep center white (no tint)
+    }
+  }
+
   reset(initial = false) {
     const angle = Math.random() * Math.PI * 2;
     const radius = 300 + Math.random() * this.config.spawnRadius;
-    
+
     this.x3d = Math.cos(angle) * radius * 0.9;
     this.y3d = Math.sin(angle) * radius * 0.7;
-    
+
     if (initial) {
       const depthRange = this.config.farZ - this.config.nearZ;
       this.z3d = this.config.nearZ + Math.random() * depthRange;
     } else {
       this.z3d = this.config.farZ + Math.random() * 300;
     }
-    
+
     this.baseSize = 15 + Math.random() * 50;
     const colorSet = COLORS[Math.floor(Math.random() * COLORS.length)];
     this.color = colorSet.main;
@@ -286,99 +341,99 @@ class NeuralNode {
     this.speed = this.config.nodeSpeed * (0.5 + Math.random() * 0.8);
     this.driftX = (Math.random() - 0.5) * 0.4;
     this.driftY = (Math.random() - 0.5) * 0.4;
-    
-    // Get pre-rendered texture
-    const baseTextureSize = 30; // Reference size for texture
-    const cached = this.textureCache.getTexture(this.color, this.glowColor, baseTextureSize);
-    this.sprite.texture = cached.texture;
-    this._textureBaseSize = baseTextureSize;
-    this._textureTotalSize = cached.size;
+
+    // Apply color tints
+    this._updateGlowColors();
   }
-  
+
   getDepthAlpha() {
     let alpha = 1;
-    
+
     if (this.z3d < this.config.fadeNearZ) {
       alpha = Math.max(0, this.z3d / this.config.fadeNearZ);
       alpha = alpha * alpha;
     }
-    
+
     if (this.z3d > this.config.fadeFarZ) {
       alpha = Math.min(1, 1 - (this.z3d - this.config.fadeFarZ) / (this.config.farZ - this.config.fadeFarZ));
       alpha = Math.max(0, alpha);
     }
-    
+
     return alpha;
   }
-  
+
   getEdgeAlpha(screenX, screenY, screenWidth, screenHeight) {
     const marginX = screenWidth * 0.15;
     const marginY = screenHeight * 0.15;
-    
+
     let alpha = 1;
-    
+
     if (screenX < marginX) {
       alpha *= screenX / marginX;
     } else if (screenX > screenWidth - marginX) {
       alpha *= (screenWidth - screenX) / marginX;
     }
-    
+
     if (screenY < marginY) {
       alpha *= screenY / marginY;
     } else if (screenY > screenHeight - marginY) {
       alpha *= (screenHeight - screenY) / marginY;
     }
-    
+
     return Math.max(0, Math.min(1, alpha));
   }
-  
+
   update(time, mouseOffsetX, mouseOffsetY, centerX, centerY, screenWidth, screenHeight) {
     this.z3d -= this.speed;
     this.x3d += this.driftX;
     this.y3d += this.driftY;
-    
+
     if (this.z3d < 20) {
       this.reset();
     }
-    
+
     const scale = this.config.fov / (this.z3d + this.config.fov);
     const parallaxFactor = Math.pow(scale, 1.5) * this.config.parallaxStrength;
-    
+
     const screenX = centerX + this.x3d * scale + mouseOffsetX * parallaxFactor;
     const screenY = centerY + this.y3d * scale + mouseOffsetY * parallaxFactor;
-    
+
     const depthAlpha = this.getDepthAlpha();
     const edgeAlpha = this.getEdgeAlpha(screenX, screenY, screenWidth, screenHeight);
     const finalAlpha = depthAlpha * edgeAlpha;
-    
+
     const pulse = Math.sin(time * this.pulseSpeed + this.pulsePhase) * 0.25 + 1;
     const size = this.baseSize * scale * pulse;
-    
+
     this.screenX = screenX;
     this.screenY = screenY;
     this.screenScale = scale;
     this.screenAlpha = finalAlpha;
     this.currentSize = size;
-    
-    // Update sprite (much faster than redrawing graphics)
-    this.sprite.x = screenX;
-    this.sprite.y = screenY;
-    this.sprite.alpha = finalAlpha;
-    
-    // Scale sprite to match desired size
-    const targetScale = (size / this._textureBaseSize);
-    this.sprite.scale.set(targetScale);
-    
-    this.sprite.visible = finalAlpha > 0.01;
+
+    // Update container transform properties (like bioluminescent-ocean pattern)
+    this.container.x = screenX;
+    this.container.y = screenY;
+    this.container.alpha = finalAlpha;
+    this.container.visible = finalAlpha > 0.01;
+
+    // Scale the container instead of redrawing
+    // Base graphics are sized for scale=1, so we apply the dynamic scale here
+    const scaleMultiplier = size / 25; // 25 is our base size (center layer is 4, outer is 50)
+    this.container.scale.set(scaleMultiplier);
   }
-  
+
   destroy() {
-    this.sprite.destroy();
+    for (const layer of this._glowLayers) {
+      layer.destroy();
+    }
+    this._glowLayers = [];
+    this.container.destroy();
   }
 }
 
 // ============================================================================
-// DEPTH PARTICLE (Optimized - batched data)
+// DEPTH PARTICLE (Using pre-built graphics like bioluminescent-ocean)
 // ============================================================================
 
 class ParticleSystem {
@@ -386,96 +441,95 @@ class ParticleSystem {
     this.classes = ctx.classes;
     this.config = config;
     this.count = count;
-    
-    // Structure of Arrays for cache-friendly iteration
-    this.x = new Float32Array(count);
-    this.y = new Float32Array(count);
-    this.z = new Float32Array(count);
-    this.size = new Float32Array(count);
-    this.speed = new Float32Array(count);
-    this.brightness = new Float32Array(count);
-    
-    // Screen positions (calculated each frame)
-    this.screenX = new Float32Array(count);
-    this.screenY = new Float32Array(count);
-    this.screenSize = new Float32Array(count);
-    this.screenAlpha = new Float32Array(count);
-    
-    // Initialize
+
+    // Container to hold all particle graphics
+    this.container = new this.classes.Container();
+
+    // Pre-create all particles as individual graphics (like bioluminescent-ocean)
+    this._particles = [];
     for (let i = 0; i < count; i++) {
-      this._resetParticle(i, true);
+      const p = new this.classes.Graphics();
+      // Draw a small glowing circle at origin
+      p.circle(0, 0, 4);
+      p.fill({ color: 0x4488FF, alpha: 0.6 });
+      p.blendMode = 'add';
+
+      // Store particle data on the graphics object
+      p._x3d = 0;
+      p._y3d = 0;
+      p._z3d = 0;
+      p._baseSize = 1 + Math.random() * 3;
+      p._speed = 0.3 + Math.random() * 1;
+      p._brightness = 0.3 + Math.random() * 0.7;
+
+      this._resetParticle(p, true);
+      this._particles.push(p);
+      this.container.addChild(p);
     }
-    
-    this.graphics = new this.classes.Graphics();
+
+    // Expose container as graphics for backward compatibility with _setup
+    this.graphics = this.container;
   }
-  
-  _resetParticle(i, initial = false) {
+
+  _resetParticle(p, initial = false) {
     const angle = Math.random() * Math.PI * 2;
     const radius = 300 + Math.random() * 2000;
-    
-    this.x[i] = Math.cos(angle) * radius;
-    this.y[i] = Math.sin(angle) * radius * 0.7;
-    this.z[i] = initial ? 50 + Math.random() * this.config.farZ : this.config.farZ + Math.random() * 100;
-    this.size[i] = 1 + Math.random() * 3; // Larger particles
-    this.speed[i] = 0.3 + Math.random() * 1;
-    this.brightness[i] = 0.3 + Math.random() * 0.7;
+
+    p._x3d = Math.cos(angle) * radius;
+    p._y3d = Math.sin(angle) * radius * 0.7;
+    p._z3d = initial ? 50 + Math.random() * this.config.farZ : this.config.farZ + Math.random() * 100;
   }
-  
+
   update(mouseOffsetX, mouseOffsetY, centerX, centerY) {
     const fov = this.config.fov;
     const fadeFarZ = this.config.fadeFarZ;
     const farZ = this.config.farZ;
-    
-    for (let i = 0; i < this.count; i++) {
-      this.z[i] -= this.speed[i];
-      
-      if (this.z[i] < 30) {
-        this._resetParticle(i);
+
+    for (const p of this._particles) {
+      p._z3d -= p._speed;
+
+      if (p._z3d < 30) {
+        this._resetParticle(p, false);
       }
-      
-      const scale = fov / (this.z[i] + fov);
+
+      const scale = fov / (p._z3d + fov);
       const parallax = Math.pow(scale, 1.3) * 80;
-      
-      this.screenX[i] = centerX + this.x[i] * scale + mouseOffsetX * parallax;
-      this.screenY[i] = centerY + this.y[i] * scale + mouseOffsetY * parallax;
-      this.screenSize[i] = this.size[i] * scale;
-      
-      let alpha = this.brightness[i];
-      if (this.z[i] < 100) {
-        alpha *= this.z[i] / 100;
+
+      // Update position via transform
+      p.x = centerX + p._x3d * scale + mouseOffsetX * parallax;
+      p.y = centerY + p._y3d * scale + mouseOffsetY * parallax;
+
+      // Update scale
+      p.scale.set(p._baseSize * scale);
+
+      // Calculate alpha
+      let alpha = p._brightness;
+      if (p._z3d < 100) {
+        alpha *= p._z3d / 100;
       }
-      if (this.z[i] > fadeFarZ) {
-        alpha *= 1 - (this.z[i] - fadeFarZ) / (farZ - fadeFarZ);
+      if (p._z3d > fadeFarZ) {
+        alpha *= 1 - (p._z3d - fadeFarZ) / (farZ - fadeFarZ);
       }
-      this.screenAlpha[i] = Math.max(0, alpha * scale * 2);
+      p.alpha = Math.max(0, alpha * scale * 2);
+      p.visible = p.alpha > 0.01;
     }
   }
-  
+
   draw() {
-    this.graphics.clear();
-    
-    for (let i = 0; i < this.count; i++) {
-      const alpha = this.screenAlpha[i];
-      if (alpha > 0.01) {
-        const x = this.screenX[i];
-        const y = this.screenY[i];
-        const size = this.screenSize[i];
-        
-        // Single circle with glow color (reduced from 2 circles per particle)
-        this.graphics
-          .circle(x, y, size * 2)
-          .fill({ color: 0x4488FF, alpha: alpha * 0.5 });
-      }
-    }
+    // No-op: particles are updated via transforms in update()
   }
-  
+
   destroy() {
-    this.graphics.destroy();
+    for (const p of this._particles) {
+      p.destroy();
+    }
+    this._particles = [];
+    this.container.destroy();
   }
 }
 
 // ============================================================================
-// RING SYSTEM (Optimized - reduced count)
+// RING SYSTEM (Using pre-built graphics)
 // ============================================================================
 
 class RingSystem {
@@ -483,75 +537,77 @@ class RingSystem {
     this.classes = ctx.classes;
     this.config = config;
     this.count = count;
-    
-    this.z = new Float32Array(count);
-    this.baseRadius = new Float32Array(count);
-    this.rotationSpeed = new Float32Array(count);
-    
-    this.screenX = new Float32Array(count);
-    this.screenY = new Float32Array(count);
-    this.screenRadius = new Float32Array(count);
-    this.screenAlpha = new Float32Array(count);
-    
+
+    // Container for all rings
+    this.container = new this.classes.Container();
+
+    // Pre-create all rings as individual graphics
+    this._rings = [];
     const step = (config.farZ - 150) / count;
+
     for (let i = 0; i < count; i++) {
-      this.z[i] = 150 + i * step;
-      this.baseRadius[i] = 600 + Math.random() * 400;
-      this.rotationSpeed[i] = (Math.random() - 0.5) * 0.005;
+      const ring = new this.classes.Graphics();
+      // Draw ring at origin with base radius of 100 (will be scaled)
+      ring.circle(0, 0, 100);
+      ring.stroke({ width: 2, color: 0x2a5a8c, alpha: 0.6 });
+      ring.blendMode = 'add';
+
+      // Store ring data
+      ring._z3d = 150 + i * step;
+      ring._baseRadius = 600 + Math.random() * 400;
+
+      this._rings.push(ring);
+      this.container.addChild(ring);
     }
-    
-    this.graphics = new this.classes.Graphics();
+
+    // Expose container as graphics for backward compatibility
+    this.graphics = this.container;
   }
-  
+
   update(time, mouseOffsetX, mouseOffsetY, centerX, centerY) {
     const fov = this.config.fov;
     const fadeFarZ = this.config.fadeFarZ;
     const farZ = this.config.farZ;
-    
-    for (let i = 0; i < this.count; i++) {
-      this.z[i] -= 0.5;
-      
-      if (this.z[i] < 50) {
-        this.z[i] = farZ;
+
+    for (const ring of this._rings) {
+      ring._z3d -= 0.5;
+
+      if (ring._z3d < 50) {
+        ring._z3d = farZ;
       }
-      
-      const scale = fov / (this.z[i] + fov);
+
+      const scale = fov / (ring._z3d + fov);
       const parallax = Math.pow(scale, 1.2) * 60;
-      
-      this.screenX[i] = centerX + mouseOffsetX * parallax;
-      this.screenY[i] = centerY + mouseOffsetY * parallax;
-      this.screenRadius[i] = this.baseRadius[i] * scale;
-      
+
+      // Update position
+      ring.x = centerX + mouseOffsetX * parallax;
+      ring.y = centerY + mouseOffsetY * parallax;
+
+      // Update scale (base radius is 100, so scale to desired radius)
+      const screenRadius = ring._baseRadius * scale;
+      ring.scale.set(screenRadius / 100);
+
+      // Calculate alpha
       let alpha = 0.15;
-      if (this.z[i] < 150) alpha *= this.z[i] / 150;
-      if (this.z[i] > fadeFarZ) {
-        alpha *= 1 - (this.z[i] - fadeFarZ) / (farZ - fadeFarZ);
+      if (ring._z3d < 150) alpha *= ring._z3d / 150;
+      if (ring._z3d > fadeFarZ) {
+        alpha *= 1 - (ring._z3d - fadeFarZ) / (farZ - fadeFarZ);
       }
-      this.screenAlpha[i] = Math.max(0, alpha);
+      ring.alpha = Math.max(0, alpha);
+      ring.visible = ring.alpha > 0.01 && screenRadius > 10;
     }
   }
-  
+
   draw() {
-    this.graphics.clear();
-    
-    for (let i = 0; i < this.count; i++) {
-      const alpha = this.screenAlpha[i];
-      const radius = this.screenRadius[i];
-      
-      if (alpha > 0.01 && radius > 10) {
-        const x = this.screenX[i];
-        const y = this.screenY[i];
-        
-        // Single ring (reduced from 2)
-        this.graphics
-          .circle(x, y, radius)
-          .stroke({ width: 2, color: 0x2a5a8c, alpha: alpha * 0.6 });
-      }
-    }
+    // No-op: rings are updated via transforms in update()
   }
-  
+
   destroy() {
-    this.graphics.destroy();
+    for (const ring of this._rings) {
+      ring.destroy();
+    }
+    this._rings = [];
+    this.container.destroy();
   }
 }
 
@@ -561,11 +617,13 @@ class RingSystem {
 
 class DeepNeuralNetwork {
   static defaults = {
+    width: 800,
+    height: 600,
     numNodes: CONFIG.numNodes,
     numParticles: CONFIG.numParticles,
     numRings: CONFIG.numRings,
     autoStart: true,
-    showCursor: true,
+    showCursor: false, // Default to false for demo compatibility
   };
   
   constructor(ctx, options = {}) {
@@ -585,9 +643,10 @@ class DeepNeuralNetwork {
     this._destroyed = false;
     this._running = false;
     this._time = 0;
-    
-    this._screenWidth = this.app.screen.width;
-    this._screenHeight = this.app.screen.height;
+
+    // Use passed dimensions (options) rather than app.screen for consistency
+    this._screenWidth = this.options.width || this.app.screen.width;
+    this._screenHeight = this.options.height || this.app.screen.height;
     this._centerX = this._screenWidth / 2;
     this._centerY = this._screenHeight / 2;
     
@@ -612,24 +671,10 @@ class DeepNeuralNetwork {
   }
   
   _setup() {
-    // Create depth filter
-    const glProgram = this.classes.GlProgram.from({
-      vertex: DEPTH_VERTEX,
-      fragment: DEPTH_FRAGMENT,
-    });
-    
-    this._depthFilter = new this.classes.Filter({
-      glProgram,
-      resources: {
-        depthUniforms: {
-          uTime: { value: 0, type: 'f32' },
-          uMouse: { value: new Float32Array([0.5, 0.5]), type: 'vec2<f32>' },
-        },
-      },
-    });
-    
-    this.container.filters = [this._depthFilter];
-    
+    // NOTE: Depth filter disabled for now - it may cause rendering issues in some environments
+    // The component works perfectly without it (just no vignette/chromatic aberration post-effect)
+    this._depthFilter = null;
+
     // Texture cache for pre-rendered node glows
     this._textureCache = new NodeTextureCache(this.ctx);
     
@@ -643,18 +688,19 @@ class DeepNeuralNetwork {
     
     // Connection graphics (single batched graphics)
     this._connectionGraphics = new this.classes.Graphics();
+    this._connectionGraphics.blendMode = 'add'; // Additive blending for glow effect
     this.container.addChild(this._connectionGraphics);
     
-    // Node container
+    // Node container (nodes have their own blendMode set)
     this._nodeContainer = new this.classes.Container();
     this.container.addChild(this._nodeContainer);
     
-    // Create nodes with cached textures
+    // Create nodes (using direct graphics rendering)
     this._nodes = [];
     for (let i = 0; i < this.options.numNodes; i++) {
       const node = new NeuralNode(this.ctx, CONFIG, this._textureCache);
       this._nodes.push(node);
-      this._nodeContainer.addChild(node.sprite);
+      this._nodeContainer.addChild(node.container);
     }
     
     // Cursor
@@ -672,11 +718,23 @@ class DeepNeuralNetwork {
     this._targetMouseX = e.clientX;
     this._targetMouseY = e.clientY;
   }
-  
+
   _onTouchMove(e) {
     e.preventDefault();
     this._targetMouseX = e.touches[0].clientX;
     this._targetMouseY = e.touches[0].clientY;
+  }
+
+  /**
+   * Set mouse position for interactive response (used by demoRunner)
+   * @param {number} x - X position in component coordinates
+   * @param {number} y - Y position in component coordinates
+   * @param {number} [influence=1] - Influence strength (unused, for API compatibility)
+   */
+  setMousePosition(x, y, influence = 1) {
+    this._targetMouseX = x;
+    this._targetMouseY = y;
+    return this;
   }
   
   _onResize() {
@@ -697,10 +755,12 @@ class DeepNeuralNetwork {
     const mouseOffsetX = (this._mouseX - this._centerX) / this._centerX;
     const mouseOffsetY = (this._mouseY - this._centerY) / this._centerY;
     
-    // Update shader
-    this._depthFilter.resources.depthUniforms.uniforms.uTime = this._time;
-    this._depthFilter.resources.depthUniforms.uniforms.uMouse[0] = this._mouseX / this._screenWidth;
-    this._depthFilter.resources.depthUniforms.uniforms.uMouse[1] = this._mouseY / this._screenHeight;
+    // Update shader (if available)
+    if (this._depthFilter) {
+      this._depthFilter.resources.depthUniforms.uniforms.uTime = this._time;
+      this._depthFilter.resources.depthUniforms.uniforms.uMouse[0] = this._mouseX / this._screenWidth;
+      this._depthFilter.resources.depthUniforms.uniforms.uMouse[1] = this._mouseY / this._screenHeight;
+    }
     
     // Update and draw rings
     this._ringSystem.update(this._time, mouseOffsetX, mouseOffsetY, this._centerX, this._centerY);
@@ -722,7 +782,7 @@ class DeepNeuralNetwork {
     // Sort nodes by Z (only for rendering order)
     this._nodes.sort((a, b) => b.z3d - a.z3d);
     for (let i = 0; i < this._nodes.length; i++) {
-      this._nodeContainer.setChildIndex(this._nodes[i].sprite, i);
+      this._nodeContainer.setChildIndex(this._nodes[i].container, i);
     }
     
     // Draw connections using spatial hash
@@ -854,7 +914,9 @@ class DeepNeuralNetwork {
     this._nodeContainer.destroy();
     
     this.container.filters = null;
-    this._depthFilter.destroy();
+    if (this._depthFilter) {
+      this._depthFilter.destroy();
+    }
     
     this._boundUpdate = null;
     this._boundMouseMove = null;

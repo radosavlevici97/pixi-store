@@ -110,22 +110,26 @@ class GoldenStarCharge {
    * Default configuration
    */
   static defaults = {
+    // Dimensions (used to calculate center position)
+    width: 800,
+    height: 600,
+
     // Size
     maxRadius: 120,
-    
+
     // Timing (ms)
     ignitionDuration: 150,
     accumulationDuration: 500,
     peakDuration: 200,
     releaseDuration: 600,
-    
+
     // Visual counts
     vortexParticleCount: 35,
     starCount: 16,
     sparkleCount: 24,
     bokehCount: 12,
     rayCount: 10,
-    
+
     // Casino Theme Colors
     goldLight: 0xffd700,      // Bright gold
     goldMid: 0xffa500,        // Orange gold
@@ -134,12 +138,16 @@ class GoldenStarCharge {
     purple: 0x8b008b,         // Deep purple
     purpleDark: 0x4b0082,     // Indigo
     white: 0xffffff,          // Sparkle white
-    
+
     // Quality
     quality: 'high',
-    
+
     // Auto-start
     autoStart: false,
+
+    // Auto-release: automatically trigger release after holding for holdDuration
+    autoRelease: true,
+    holdDuration: 800, // ms to hold at peak before auto-releasing
   };
 
   /**
@@ -196,7 +204,12 @@ class GoldenStarCharge {
     this._applyQuality();
     this._setup();
 
-    // 10. Auto-start if configured
+    // 10. Center the effect based on dimensions
+    const centerX = this.options.width / 2;
+    const centerY = this.options.height / 2;
+    this.setPosition(centerX, centerY);
+
+    // 11. Auto-start if configured
     if (this.options.autoStart) {
       this.start();
     }
@@ -845,6 +858,18 @@ class GoldenStarCharge {
     this._burstStars = [];
   }
 
+  /**
+   * Restart the animation cycle (used for auto-release looping)
+   */
+  _restartCycle() {
+    this._time = 0;
+    this._chargeProgress = 0;
+    this._phase = 'ignition';
+    this._phaseTime = 0;
+    this._releaseProgress = 0;
+    this._resetVisuals();
+  }
+
   _resetVisuals() {
     this._atmosphereGlow.alpha = 0;
     this._magentaGlow.alpha = 0;
@@ -931,12 +956,21 @@ class GoldenStarCharge {
         break;
       case 'holding':
         this._chargeProgress = 0.95 + Math.sin(this._time * 0.004) * 0.05;
+        // Auto-release after holdDuration
+        if (opts.autoRelease && this._phaseTime >= opts.holdDuration) {
+          this.release();
+        }
         break;
       case 'releasing':
         this._releaseProgress = Math.min(this._phaseTime / opts.releaseDuration, 1);
         if (this._releaseProgress >= 1) {
           this.onReleaseComplete.emit({ component: this });
-          this.reset();
+          // Auto-restart the cycle if autoRelease is enabled
+          if (opts.autoRelease) {
+            this._restartCycle();
+          } else {
+            this.reset();
+          }
         }
         break;
     }

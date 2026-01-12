@@ -16,8 +16,8 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     color: '#00ffcc',
     icon: '🌌',
     fileName: 'CosmicAurora.js',
-    lines: 888,
-    components: ['AuroraStreamer', 'StarField', 'FloatingOrbs', 'NovaBurst', 'ShockwaveRing', 'EnergyCore'],
+    lines: 1047,
+    components: ['CosmicAurora', 'AuroraStreamer', 'StarField', 'FloatingOrbs', 'NovaBurst', 'ShockwaveRing', 'EnergyCore'],
     createdAt: '2025-11-15',
   },
   {
@@ -32,7 +32,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🧬',
     fileName: 'GameOfLife.js',
     lines: 1144,
-    components: ['DeathParticleSystem', 'CellRenderer', 'GridManager', 'LifeEngine'],
+    components: ['GameOfLife', 'DeathParticleSystem', 'CellGrid'],
     createdAt: '2025-10-20',
   },
   {
@@ -47,7 +47,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🏃',
     fileName: 'TempleRunGame.js',
     lines: 1458,
-    components: ['Player', 'Obstacle', 'Coin', 'Background', 'GameUI', 'TempleRunGame'],
+    components: ['TempleRunGame', 'Player', 'Obstacle', 'Coin', 'Background', 'GameUI'],
     createdAt: '2025-09-05',
   },
   {
@@ -91,8 +91,8 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     color: '#39ff14',
     icon: '🧠',
     fileName: 'DeepNeuralNetwork-optimized.js',
-    lines: 856,
-    components: ['NeuralNode', 'Connection', 'DataPulse', 'NetworkLayer'],
+    lines: 914,
+    components: ['DeepNeuralNetwork'],
     createdAt: '2025-08-22',
   },
   {
@@ -107,7 +107,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🔗',
     fileName: 'DijkstraNeuralPulseNetwork.js',
     lines: 1124,
-    components: ['PathNode', 'PulseTrail', 'NetworkGraph', 'PathfindingEngine'],
+    components: ['DijkstraNeuralPulseNetwork'],
     createdAt: '2025-09-18',
   },
   {
@@ -122,7 +122,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🔮',
     fileName: 'FerrofluidOracle.js',
     lines: 987,
-    components: ['FerrofluidParticle', 'MagneticField', 'FluidSimulation'],
+    components: ['FerrofluidOracle'],
     createdAt: '2025-10-08',
   },
   {
@@ -137,7 +137,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '⭐',
     fileName: 'GoldenStarCharge.js',
     lines: 1089,
-    components: ['StarParticle', 'EnergyRing', 'ChargeEffect', 'GlowEmitter'],
+    components: ['GoldenStarCharge'],
     createdAt: '2025-11-10',
   },
   {
@@ -167,7 +167,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🔴',
     fileName: 'MarsColony.js',
     lines: 678,
-    components: ['HabitatDome', 'MarsRover', 'DustStorm', 'Terrain'],
+    components: ['MarsColony'],
     createdAt: '2025-10-25',
   },
   {
@@ -182,7 +182,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🌊',
     fileName: 'NeuralAurora.js',
     lines: 1287,
-    components: ['NeuralStream', 'AuroraWave', 'SynapticPulse', 'BiogradientField'],
+    components: ['NeuralAuroraScene'],
     createdAt: '2025-08-15',
   },
   {
@@ -197,7 +197,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '⚡',
     fileName: 'QuantumColliderEffect.js',
     lines: 734,
-    components: ['QuantumParticle', 'CollisionBurst', 'EnergyTrail', 'FieldDistortion'],
+    components: ['QuantumColliderEffect'],
     createdAt: '2025-11-05',
   },
   {
@@ -212,7 +212,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🌧️',
     fileName: 'RainstormGlass.js',
     lines: 723,
-    components: ['RainDrop', 'GlassRefraction', 'StreakTrail', 'AmbientMist'],
+    components: ['RainstormGlass'],
     createdAt: '2025-09-12',
   },
   {
@@ -227,7 +227,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '💫',
     fileName: 'star-explosion.js',
     lines: 612,
-    components: ['ExplosionCore', 'ShockwaveRing', 'DebrisField', 'ColorCascade'],
+    components: ['StarExplosionShader'],
     createdAt: '2025-10-30',
   },
   {
@@ -242,7 +242,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🌟',
     fileName: 'StarNudgeBackground.js',
     lines: 456,
-    components: ['StarLayer', 'ParallaxController', 'NudgeHandler'],
+    components: ['StarNudgeBackground'],
     createdAt: '2025-07-20',
   },
   {
@@ -257,7 +257,7 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     icon: '🎱',
     fileName: 'BokehBallThrow.js',
     lines: 589,
-    components: ['BokehBall', 'PhysicsEngine', 'BlurRenderer', 'ThrowHandler'],
+    components: ['BokehBallThrow'],
     createdAt: '2025-11-18',
   },
   {
@@ -271,8 +271,8 @@ export const COMPONENT_METADATA: readonly ComponentMetadata[] = [
     color: '#0077be',
     icon: '🌊',
     fileName: 'bioluminescent-ocean.js',
-    lines: 876,
-    components: ['DeepSeaCreature', 'PlanktonField', 'OceanCurrent', 'AmbientGlow'],
+    lines: 1185,
+    components: ['BioluminescentOcean', 'DeepOceanBackground', 'BioluminescentPlankton', 'LightRays', 'FloatingDebris', 'JellyfishSpawner'],
     createdAt: '2025-08-30',
   },
 ] as const;

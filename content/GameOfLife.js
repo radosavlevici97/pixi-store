@@ -538,6 +538,14 @@ class CellGrid {
  */
 class GameOfLife {
   /**
+   * Lifecycle descriptor for demoRunner.
+   * Declares that randomize(0.3) must be called before start().
+   */
+  static lifecycle = {
+    init: [{ method: 'randomize', args: [0.3] }]
+  };
+
+  /**
    * @param {Object} ctx - PixiContext with classes, ticker
    * @param {Object} options - Configuration options
    * @param {PIXI.Container} options.container - Main container for all visuals

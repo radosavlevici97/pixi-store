@@ -44,11 +44,21 @@ export function createPixiContext(
       Sprite: pixiModule.Sprite,
       Text: pixiModule.Text,
       Point: pixiModule.Point,
+      Texture: pixiModule.Texture,
+      BlurFilter: pixiModule.BlurFilter,
+      Rectangle: pixiModule.Rectangle,
+      RenderTexture: pixiModule.RenderTexture,
+      TextStyle: pixiModule.TextStyle,
+      Filter: pixiModule.Filter,
+      GlProgram: pixiModule.GlProgram,
     }),
     create: Object.freeze({
       container: () => new pixiModule.Container(),
       graphics: () => new pixiModule.Graphics(),
+      sprite: (texture?: InstanceType<typeof pixiModule.Texture>) => new pixiModule.Sprite(texture),
       point: (x = 0, y = 0) => new pixiModule.Point(x, y),
+      text: (text: string, style?: Partial<InstanceType<typeof pixiModule.TextStyle>>) =>
+        new pixiModule.Text({ text, style }),
     }),
   });
 

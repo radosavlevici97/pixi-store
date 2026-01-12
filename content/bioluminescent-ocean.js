@@ -1011,6 +1011,177 @@ function createPixiContext(pixiModule, gsapModule, app, config = {}) {
 }
 
 // ============================================================================
+// MAIN SCENE COMPONENT
+// ============================================================================
+
+/**
+ * BioluminescentOcean - Complete underwater scene with all effects
+ * Combines background, plankton, light rays, debris, and jellyfish
+ *
+ * @param {PixiContext} ctx - Context from createPixiContext()
+ * @param {Object} options - Configuration
+ * @param {Container} options.container - Parent container (required)
+ * @param {number} [options.width=800] - Width
+ * @param {number} [options.height=600] - Height
+ * @param {boolean} [options.autoStart=true] - Start animation automatically
+ */
+class BioluminescentOcean {
+  static defaults = {
+    width: 800,
+    height: 600,
+    autoStart: true,
+    planktonCount: 300,
+    debrisCount: 25,
+  };
+
+  constructor(ctx, options = {}) {
+    // Validate required context
+    if (!ctx?.classes) {
+      throw new Error('BioluminescentOcean: ctx.classes is required');
+    }
+    if (!ctx?.ticker) {
+      throw new Error('BioluminescentOcean: ctx.ticker is required');
+    }
+    if (!options.container) {
+      throw new Error('BioluminescentOcean: options.container is required');
+    }
+
+    // Store context references
+    this.classes = ctx.classes;
+    this.ticker = ctx.ticker;
+    this._ctx = ctx;
+
+    // Store container and merge options
+    this.parentContainer = options.container;
+    this.options = { ...BioluminescentOcean.defaults, ...options };
+
+    // State
+    this._destroyed = false;
+    this._running = false;
+    this._components = [];
+
+    // Create main container
+    this.container = new this.classes.Container();
+    this.parentContainer.addChild(this.container);
+
+    this._setup();
+
+    if (this.options.autoStart) {
+      this.start();
+    }
+  }
+
+  _setup() {
+    const { width, height, planktonCount, debrisCount } = this.options;
+
+    // Create all scene components in order (back to front)
+    this._background = new DeepOceanBackground(this._ctx, {
+      container: this.container,
+      width,
+      height,
+    });
+    this._components.push(this._background);
+
+    this._rays = new LightRays(this._ctx, {
+      container: this.container,
+      width,
+      height,
+    });
+    this._components.push(this._rays);
+
+    this._plankton = new BioluminescentPlankton(this._ctx, {
+      container: this.container,
+      width,
+      height,
+      count: planktonCount,
+    });
+    this._components.push(this._plankton);
+
+    this._debris = new FloatingDebris(this._ctx, {
+      container: this.container,
+      width,
+      height,
+      count: debrisCount,
+    });
+    this._components.push(this._debris);
+
+    this._jellyfish = new JellyfishSpawner(this._ctx, {
+      container: this.container,
+      width,
+      height,
+    });
+    this._components.push(this._jellyfish);
+  }
+
+  /**
+   * Set mouse position for interactive plankton response
+   * @param {number} x - X position in pixels
+   * @param {number} y - Y position in pixels
+   * @param {number} [influence=1] - Influence strength (0-1)
+   */
+  setMousePosition(x, y, influence = 1) {
+    if (this._plankton && typeof this._plankton.setMousePosition === 'function') {
+      this._plankton.setMousePosition(x, y, influence);
+    }
+    return this;
+  }
+
+  start() {
+    if (this._destroyed || this._running) return this;
+    this._running = true;
+
+    for (const component of this._components) {
+      if (typeof component.start === 'function') {
+        component.start();
+      }
+    }
+
+    return this;
+  }
+
+  stop() {
+    if (!this._running) return this;
+    this._running = false;
+
+    for (const component of this._components) {
+      if (typeof component.stop === 'function') {
+        component.stop();
+      }
+    }
+
+    return this;
+  }
+
+  reset() {
+    for (const component of this._components) {
+      if (typeof component.reset === 'function') {
+        component.reset();
+      }
+    }
+    return this;
+  }
+
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+
+    this.stop();
+
+    for (const component of this._components) {
+      if (typeof component.destroy === 'function') {
+        component.destroy();
+      }
+    }
+    this._components = [];
+
+    if (this.container.parent) {
+      this.container.parent.removeChild(this.container);
+    }
+    this.container.destroy({ children: true });
+  }
+}
+
+// ============================================================================
 // EXPORTS
 // ============================================================================
 export {
@@ -1021,4 +1192,7 @@ export {
   LightRays,
   FloatingDebris,
   JellyfishSpawner,
+  BioluminescentOcean,
 };
+
+export default BioluminescentOcean;

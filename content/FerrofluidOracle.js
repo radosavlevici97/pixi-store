@@ -1,12 +1,11 @@
 /**
  * FerrofluidOracle - Mercury/ferrofluid metaball effect with magnetic field visualization
- * 
+ *
  * Pure composition - receives PixiContext via constructor
- * ?? ZERO instances of PIXI. in this class
- * 
+ *
  * Features:
  * - Metaball system with organic physics
- * - Threshold shader for liquid edge effect
+ * - Blur filter for liquid edge effect (no custom shaders)
  * - Magnetic field lines
  * - Metallic dust particles
  * - Click-based spike eruptions
@@ -80,56 +79,115 @@ const COLORS = {
 };
 
 // ============================================================================
-// THRESHOLD SHADER (PixiJS v7 GLSL)
+// THRESHOLD SHADER - Creates the liquid mercury/ferrofluid effect
 // ============================================================================
 
-const thresholdShaderSrc = `
-  precision mediump float;
-  varying vec2 vTextureCoord;
-  uniform sampler2D uSampler;
-  uniform float uTime;
-  uniform vec2 uMouse;
-  
-  void main() {
-    vec4 color = texture2D(uSampler, vTextureCoord);
-    float threshold = 0.5;
-    
-    // Create sharp edge
-    float alpha = smoothstep(threshold - 0.1, threshold + 0.1, color.a);
-    
-    // Iridescent color based on position and time
-    vec2 uv = vTextureCoord;
-    float hue = uv.x * 0.5 + uv.y * 0.3 + uTime * 0.1;
-    
-    // Distance from mouse for highlight
-    vec2 mouseDist = uv - uMouse;
-    float highlight = 1.0 - smoothstep(0.0, 0.3, length(mouseDist));
-    
-    // Base mercury color with iridescent shift
-    vec3 baseColor = vec3(0.75, 0.77, 0.81);
-    vec3 iridescent = vec3(
-      0.5 + 0.5 * sin(hue * 6.28 + 0.0),
-      0.5 + 0.5 * sin(hue * 6.28 + 2.09),
-      0.5 + 0.5 * sin(hue * 6.28 + 4.18)
-    );
-    
-    // Mix colors
-    vec3 finalColor = mix(baseColor, iridescent, 0.15 + highlight * 0.2);
-    
-    // Add specular highlight
-    finalColor += vec3(highlight * 0.5);
-    
-    // Edge glow
-    float edge = smoothstep(threshold - 0.15, threshold, color.a) - 
-                 smoothstep(threshold, threshold + 0.15, color.a);
-    finalColor += vec3(0.545, 0.361, 0.965) * edge * 2.0;
-    
-    gl_FragColor = vec4(finalColor * alpha, alpha);
-  }
+/**
+ * Vertex shader for PixiJS v8 Filter (GLSL ES 3.0 / WebGL 2)
+ * Uses the standard PixiJS v8 filter vertex shader structure
+ */
+const THRESHOLD_VERTEX = `
+in vec2 aPosition;
+out vec2 vTextureCoord;
+
+uniform vec4 uInputSize;
+uniform vec4 uOutputFrame;
+uniform vec4 uOutputTexture;
+
+vec4 filterVertexPosition(void) {
+    vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+    position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
+    position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
+    return vec4(position, 0.0, 1.0);
+}
+
+vec2 filterTextureCoord(void) {
+    return aPosition * (uOutputFrame.zw * uInputSize.zw);
+}
+
+void main(void) {
+    gl_Position = filterVertexPosition();
+    vTextureCoord = filterTextureCoord();
+}
 `;
 
+/**
+ * Fragment shader - threshold effect with iridescent mercury coloring
+ * This creates the liquid mercury blob effect by thresholding blurred alpha
+ * GLSL ES 3.0 syntax for PixiJS v8
+ */
+const THRESHOLD_FRAGMENT = `
+in vec2 vTextureCoord;
+out vec4 finalColor;
+
+uniform sampler2D uTexture;
+uniform float uTime;
+uniform vec2 uMouse;
+
+void main() {
+    vec4 color = texture(uTexture, vTextureCoord);
+    float threshold = 0.5;
+
+    // Smooth threshold for liquid edge
+    float alpha = smoothstep(threshold - 0.1, threshold + 0.1, color.a);
+
+    // Iridescent effect based on position and time
+    vec2 uv = vTextureCoord;
+    float hue = uv.x * 0.5 + uv.y * 0.3 + uTime * 0.1;
+
+    // Mouse highlight effect
+    vec2 mouseDist = uv - uMouse;
+    float highlight = 1.0 - smoothstep(0.0, 0.3, length(mouseDist));
+
+    // Base mercury color
+    vec3 baseColor = vec3(0.75, 0.77, 0.81);
+
+    // Iridescent rainbow shift
+    vec3 iridescent = vec3(
+        0.5 + 0.5 * sin(hue * 6.28 + 0.0),
+        0.5 + 0.5 * sin(hue * 6.28 + 2.09),
+        0.5 + 0.5 * sin(hue * 6.28 + 4.18)
+    );
+
+    // Mix base with iridescent, more iridescent near mouse
+    vec3 finalColorRGB = mix(baseColor, iridescent, 0.15 + highlight * 0.2);
+    finalColorRGB += vec3(highlight * 0.5);
+
+    // Edge glow (violet accent on edges)
+    float edge = smoothstep(threshold - 0.15, threshold, color.a) -
+                 smoothstep(threshold, threshold + 0.15, color.a);
+    finalColorRGB += vec3(0.545, 0.361, 0.965) * edge * 2.0;
+
+    finalColor = vec4(finalColorRGB * alpha, alpha);
+}
+`;
+
+/**
+ * Creates the threshold filter for PixiJS v8
+ * @param {object} classes - PixiJS classes from context
+ * @returns {Filter} Configured threshold filter
+ */
+function createThresholdFilter(classes) {
+  const { Filter, GlProgram } = classes;
+
+  const glProgram = GlProgram.from({
+    vertex: THRESHOLD_VERTEX,
+    fragment: THRESHOLD_FRAGMENT,
+  });
+
+  return new Filter({
+    glProgram,
+    resources: {
+      thresholdUniforms: {
+        uTime: { value: 0, type: 'f32' },
+        uMouse: { value: new Float32Array([0.5, 0.5]), type: 'vec2<f32>' },
+      },
+    },
+  });
+}
+
 // ============================================================================
-// METABALL CLASS
+// METABALL CLASS (Simple data class - rendering done in main component)
 // ============================================================================
 
 class Metaball {
@@ -442,11 +500,11 @@ class FerrofluidOracle {
    * Default configuration
    */
   static defaults = {
-    metaballCount: { core: 1, orbital: 8, outer: 12 },
+    metaballCount: { core: 1, orbital: 5, outer: 8 },
     fieldLineCount: 30,
     dustParticleCount: 150,
-    blurStrength: 15,
-    blurQuality: 10,
+    blurStrength: 12,
+    blurQuality: 8,
     autoStart: true,
   };
 
@@ -514,8 +572,8 @@ class FerrofluidOracle {
     this._dustContainer = null;
     this._spikeContainer = null;
     this._renderTexture = null;
-    this._thresholdFilter = null;
     this._blurFilter = null;
+    this._thresholdFilter = null;
 
     // Initialize
     this.setup();
@@ -527,6 +585,7 @@ class FerrofluidOracle {
 
   /**
    * Initialize visual elements
+   * Uses blur + render texture + custom threshold shader for metaball merging effect
    */
   setup() {
     // Create metaball container with blur filter
@@ -534,14 +593,14 @@ class FerrofluidOracle {
     this._metaballGraphics = new this.classes.Graphics();
     this._metaballContainer.addChild(this._metaballGraphics);
 
-    // Create blur filter for metaball threshold effect
-    this._blurFilter = new this.classes.BlurFilter(
-      this.options.blurStrength,
-      this.options.blurQuality
-    );
+    // Create blur filter for metaball soft edges
+    this._blurFilter = new this.classes.BlurFilter({
+      strength: this.options.blurStrength,
+      quality: this.options.blurQuality,
+    });
     this._metaballContainer.filters = [this._blurFilter];
 
-    // Create render texture for metaballs
+    // Create render texture for metaballs (blurred)
     this._renderTexture = this.classes.RenderTexture.create({
       width: this._screenWidth,
       height: this._screenHeight,
@@ -550,16 +609,13 @@ class FerrofluidOracle {
     // Create sprite to display rendered metaballs
     this._metaballSprite = new this.classes.Sprite(this._renderTexture);
 
-    // Create threshold shader filter (PixiJS v7 syntax)
-    this._thresholdFilter = new this.classes.Filter(null, thresholdShaderSrc, {
-      uTime: 0,
-      uMouse: [0.5, 0.5]
-    });
+    // Create and apply threshold filter for liquid mercury effect
+    this._thresholdFilter = createThresholdFilter(this.classes);
     this._metaballSprite.filters = [this._thresholdFilter];
 
     this.container.addChild(this._metaballSprite);
 
-    // Create field lines container
+    // Create field lines container (in front of fluid)
     this._fieldLinesContainer = new this.classes.Container();
     this.container.addChild(this._fieldLinesContainer);
 
@@ -583,37 +639,38 @@ class FerrofluidOracle {
 
   /**
    * Create metaballs in organic formation
+   * Sizes and distances tuned for more separation/holes in the fluid
    */
   _createMetaballs() {
     const { core, orbital, outer } = this.options.metaballCount;
 
-    // Core metaball
+    // Core metaball (smaller for more separation)
     for (let i = 0; i < core; i++) {
-      this._metaballs.push(new Metaball(this._centerX, this._centerY, 120, true));
+      this._metaballs.push(new Metaball(this._centerX, this._centerY, 50, true));
     }
 
-    // Orbital metaballs
+    // Orbital metaballs (smaller, more spread out)
     for (let i = 0; i < orbital; i++) {
       const angle = (i / orbital) * Math.PI * 2;
-      const dist = 80 + Math.random() * 40;
+      const dist = 70 + Math.random() * 40;
       this._metaballs.push(
         new Metaball(
           this._centerX + Math.cos(angle) * dist,
           this._centerY + Math.sin(angle) * dist,
-          40 + Math.random() * 30
+          20 + Math.random() * 15
         )
       );
     }
 
-    // Outer satellite metaballs
+    // Outer satellite metaballs (smaller, more spread out for gaps)
     for (let i = 0; i < outer; i++) {
-      const angle = (i / outer) * Math.PI * 2 + Math.random() * 0.3;
-      const dist = 150 + Math.random() * 80;
+      const angle = (i / outer) * Math.PI * 2 + Math.random() * 0.5;
+      const dist = 120 + Math.random() * 60;
       this._metaballs.push(
         new Metaball(
           this._centerX + Math.cos(angle) * dist,
           this._centerY + Math.sin(angle) * dist,
-          20 + Math.random() * 25
+          12 + Math.random() * 12
         )
       );
     }
@@ -669,8 +726,8 @@ class FerrofluidOracle {
   /**
    * Main update loop
    */
-  _update(delta) {
-    const deltaTime = delta / 60;
+  _update(ticker) {
+    const deltaTime = ticker.deltaTime / 60;
     this._time += deltaTime;
 
     // Smooth mouse following
@@ -683,18 +740,23 @@ class FerrofluidOracle {
     this._lastMouse.x = this._mouse.x;
     this._lastMouse.y = this._mouse.y;
 
-    // Update metaballs
+    // Update threshold filter uniforms
+    if (this._thresholdFilter) {
+      this._thresholdFilter.resources.thresholdUniforms.uniforms.uTime = this._time;
+      // Convert mouse position to normalized UV coordinates (0-1)
+      this._thresholdFilter.resources.thresholdUniforms.uniforms.uMouse[0] = this._mouse.x / this._screenWidth;
+      this._thresholdFilter.resources.thresholdUniforms.uniforms.uMouse[1] = this._mouse.y / this._screenHeight;
+    }
+
+    // Update and draw metaballs
     this._updateMetaballs(deltaTime);
 
-    // Render metaballs to texture
-    this.renderer.render(this._metaballContainer, { renderTexture: this._renderTexture });
-
-    // Update threshold shader uniforms
-    this._thresholdFilter.uniforms.uTime = this._time;
-    this._thresholdFilter.uniforms.uMouse = [
-      this._mouse.x / this._screenWidth,
-      this._mouse.y / this._screenHeight
-    ];
+    // Render metaballs to texture (this applies the blur filter)
+    this.renderer.render({
+      container: this._metaballContainer,
+      target: this._renderTexture,
+      clear: true,
+    });
 
     // Update field lines
     for (const line of this._fieldLines) {
@@ -721,7 +783,7 @@ class FerrofluidOracle {
     for (const ball of this._metaballs) {
       ball.update(this._mouse.x, this._mouse.y, this._mouseVelocity, deltaTime);
 
-      // Draw metaball (will be blurred and thresholded)
+      // Draw metaball as white circle (will be blurred and tinted)
       this._metaballGraphics.circle(ball.x, ball.y, ball.radius);
       this._metaballGraphics.fill({ color: 0xFFFFFF, alpha: 0.8 });
     }
@@ -735,6 +797,15 @@ class FerrofluidOracle {
   setMouse(x, y) {
     this._targetMouse.x = x;
     this._targetMouse.y = y;
+  }
+
+  /**
+   * Set mouse position (alias for demoRunner compatibility)
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   */
+  setMousePosition(x, y) {
+    this.setMouse(x, y);
   }
 
   /**
@@ -844,6 +915,12 @@ class FerrofluidOracle {
       this._renderTexture = null;
     }
 
+    // Destroy threshold filter
+    if (this._thresholdFilter) {
+      this._thresholdFilter.destroy();
+      this._thresholdFilter = null;
+    }
+
     // Destroy containers
     if (this._metaballSprite) {
       this.container.removeChild(this._metaballSprite);
@@ -872,7 +949,7 @@ class FerrofluidOracle {
 // ============================================================================
 
 /**
- * Creates a PixiContext for PixiJS v7
+ * Creates a PixiContext for PixiJS v8
  * @param {object} pixiModule - PIXI namespace (global or imported)
  * @param {PIXI.Application} app - Initialized PIXI application
  * @param {object} [config] - Optional overrides
@@ -903,6 +980,7 @@ function createPixiContext(pixiModule, app, config = {}) {
       BlurFilter: config.BlurFilter ?? pixiModule.BlurFilter,
       ColorMatrixFilter: config.ColorMatrixFilter ?? pixiModule.ColorMatrixFilter,
       Filter: config.Filter ?? pixiModule.Filter,
+      GlProgram: config.GlProgram ?? pixiModule.GlProgram,
       RenderTexture: config.RenderTexture ?? pixiModule.RenderTexture,
     }),
     create: Object.freeze({
@@ -929,7 +1007,6 @@ export {
   Signal,
   createPixiContext,
   COLORS,
-  thresholdShaderSrc,
 };
 
 export default FerrofluidOracle;

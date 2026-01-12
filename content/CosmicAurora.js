@@ -861,6 +861,173 @@ class EnergyCore {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// MAIN SCENE COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * CosmicAurora - Complete aurora scene with all visual layers
+ * Combines aurora streamers, star field, floating orbs, and interactive effects
+ *
+ * @param {PixiContext} ctx - Context from createPixiContext()
+ * @param {Object} options - Configuration
+ * @param {Container} options.container - Parent container (required)
+ * @param {number} [options.width=800] - Width
+ * @param {number} [options.height=600] - Height
+ * @param {boolean} [options.autoStart=true] - Start animation automatically
+ */
+class CosmicAurora {
+  static defaults = {
+    width: 800,
+    height: 600,
+    autoStart: true,
+    streamerCount: 5,
+    starCount: 150,
+    orbCount: 25,
+  };
+
+  constructor(ctx, options = {}) {
+    if (!ctx?.classes) {
+      throw new Error('CosmicAurora: ctx.classes is required');
+    }
+    if (!ctx?.ticker) {
+      throw new Error('CosmicAurora: ctx.ticker is required');
+    }
+    if (!options.container) {
+      throw new Error('CosmicAurora: options.container is required');
+    }
+
+    this.classes = ctx.classes;
+    this.ticker = ctx.ticker;
+    this._ctx = ctx;
+
+    this.parentContainer = options.container;
+    this.options = { ...CosmicAurora.defaults, ...options };
+
+    this._destroyed = false;
+    this._running = false;
+    this._components = [];
+
+    this.container = new this.classes.Container();
+    this.parentContainer.addChild(this.container);
+
+    this._setup();
+
+    if (this.options.autoStart) {
+      this.start();
+    }
+  }
+
+  _setup() {
+    const { width, height, streamerCount, starCount, orbCount } = this.options;
+
+    // Star field (background layer)
+    this._starField = new StarField(this._ctx, {
+      width,
+      height,
+      starCount,
+    });
+    this.container.addChild(this._starField.container);
+    this._components.push(this._starField);
+
+    // Aurora streamers
+    this._aurora = new AuroraStreamer(this._ctx, {
+      width,
+      height,
+      streamerCount,
+    });
+    this.container.addChild(this._aurora.container);
+    this._components.push(this._aurora);
+
+    // Floating orbs
+    this._orbs = new FloatingOrbs(this._ctx, {
+      width,
+      height,
+      orbCount,
+    });
+    this.container.addChild(this._orbs.container);
+    this._components.push(this._orbs);
+
+    // Energy core at center
+    this._core = new EnergyCore(this._ctx, {});
+    this._core.setPosition(width / 2, height / 2);
+    this.container.addChild(this._core.container);
+    this._components.push(this._core);
+
+    // Interactive effects (pooled, ready for clicks/interactions)
+    this._novaBurst = new NovaBurst(this._ctx, {});
+    this.container.addChild(this._novaBurst.container);
+    this._components.push(this._novaBurst);
+
+    this._shockwave = new ShockwaveRing(this._ctx, {});
+    this.container.addChild(this._shockwave.container);
+    this._components.push(this._shockwave);
+  }
+
+  start() {
+    if (this._destroyed || this._running) return this;
+    this._running = true;
+
+    for (const component of this._components) {
+      if (typeof component.start === 'function') {
+        component.start();
+      }
+    }
+
+    return this;
+  }
+
+  stop() {
+    if (!this._running) return this;
+    this._running = false;
+
+    for (const component of this._components) {
+      if (typeof component.stop === 'function') {
+        component.stop();
+      }
+    }
+
+    return this;
+  }
+
+  /**
+   * Trigger an interactive burst effect at position
+   */
+  burst(x, y) {
+    if (this._novaBurst) this._novaBurst.emit(x, y);
+    if (this._shockwave) this._shockwave.emit(x, y);
+    return this;
+  }
+
+  reset() {
+    for (const component of this._components) {
+      if (typeof component.reset === 'function') {
+        component.reset();
+      }
+    }
+    return this;
+  }
+
+  destroy() {
+    if (this._destroyed) return;
+    this._destroyed = true;
+
+    this.stop();
+
+    for (const component of this._components) {
+      if (typeof component.destroy === 'function') {
+        component.destroy();
+      }
+    }
+    this._components = [];
+
+    if (this.container.parent) {
+      this.container.parent.removeChild(this.container);
+    }
+    this.container.destroy({ children: true });
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // EXPORTS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -872,16 +1039,8 @@ export {
   FloatingOrbs,
   NovaBurst,
   ShockwaveRing,
-  EnergyCore
+  EnergyCore,
+  CosmicAurora
 };
 
-export default {
-  createPixiContext,
-  Easing,
-  AuroraStreamer,
-  StarField,
-  FloatingOrbs,
-  NovaBurst,
-  ShockwaveRing,
-  EnergyCore
-};
+export default CosmicAurora;

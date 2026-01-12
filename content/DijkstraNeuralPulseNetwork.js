@@ -693,6 +693,13 @@ class DijkstraParticles {
 // ============================================================================
 
 class DijkstraNeuralPulseNetwork {
+  // Lifecycle descriptor: don't auto-call start() - this is an interactive demo
+  static lifecycle = {
+    setup: false,
+    init: [],
+    start: false
+  };
+
   static defaults = {
     width: 650,
     height: 420,
@@ -1069,7 +1076,7 @@ class DijkstraNeuralPulseNetwork {
   }
 
   _update(ticker) {
-    if (this._paused) return;
+    if (this._paused || !this._algorithmRunning) return;
     this._delay += ticker.deltaTime * this.speed;
     if (this._delay >= 20) {
       this._delay = 0;

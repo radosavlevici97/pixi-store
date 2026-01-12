@@ -199,38 +199,38 @@ const fragmentShaderSource = `
   vec3 renderStars(vec2 uv, float time) {
     vec3 col = vec3(0.0);
     vec2 center = vec2(0.5, 0.5);
-    
-    // Warp speed stars
-    for(int layer = 0; layer < 4; layer++) {
+
+    // Warp speed stars (reduced from 4 layers x 50 to 3 layers x 25)
+    for(int layer = 0; layer < 3; layer++) {
       float layerSpeed = 0.2 + float(layer) * 0.1;
       float layerDepth = float(layer) + 1.0;
-      
-      for(int i = 0; i < 50; i++) {
-        float idx = float(i) + float(layer) * 50.0;
-        
+
+      for(int i = 0; i < 25; i++) {
+        float idx = float(i) + float(layer) * 25.0;
+
         vec2 starOrigin = vec2(
           hash(idx * 13.7),
           hash(idx * 29.3 + 100.0)
         );
-        
+
         float starTime = fract(time * layerSpeed * 0.2 + hash(idx * 7.1));
-        
+
         vec2 dir = normalize(starOrigin - center);
         float dist = starTime * starTime * 1.2;
         vec2 starPos = center + dir * dist;
-        
+
         if(starPos.x < -0.1 || starPos.x > 1.1 || starPos.y < -0.1 || starPos.y > 1.1) continue;
-        
+
         float d = length(uv - starPos);
         float size = 0.0006 + starTime * 0.004 / layerDepth;
         float brightness = starTime * starTime * 1.5;
-        
+
         if(d < size * 5.0) {
           float glow = exp(-d * d / (size * size) * 1.2);
           vec3 starCol = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.95, 0.9), hash(idx * 3.3));
           col += starCol * glow * brightness / layerDepth;
         }
-        
+
         if(starTime > 0.5) {
           vec2 trailDir = normalize(starPos - center);
           float trailLen = starTime * 0.03;
@@ -243,33 +243,33 @@ const fragmentShaderSource = `
         }
       }
     }
-    
-    // Static stars
-    for(int layer = 0; layer < 5; layer++) {
-      float layerScale = 80.0 + float(layer) * 60.0;
-      float layerBright = 1.0 - float(layer) * 0.15;
-      
+
+    // Static stars (reduced density - higher thresholds, fewer layers)
+    for(int layer = 0; layer < 3; layer++) {
+      float layerScale = 60.0 + float(layer) * 40.0;
+      float layerBright = 1.0 - float(layer) * 0.2;
+
       vec2 starUV = uv * layerScale;
       vec2 id = floor(starUV);
       vec2 fd = fract(starUV) - 0.5;
-      
+
       float star = hash2(id + float(layer) * 100.0);
-      float threshold = 0.9 - float(layer) * 0.03;
-      
+      float threshold = 0.96 - float(layer) * 0.02;  // Much higher threshold = fewer stars
+
       if(star > threshold) {
-        float brightness = (star - threshold) * (1.0 / (1.0 - threshold)) * 12.0 * layerBright;
+        float brightness = (star - threshold) * (1.0 / (1.0 - threshold)) * 15.0 * layerBright;
         float d = length(fd);
         float glow = exp(-d * d * 30.0);
         float twinkle = 0.6 + 0.4 * sin(time * (1.0 + hash2(id) * 2.0) + hash2(id) * TAU);
-        
+
         vec3 starCol = mix(vec3(0.7, 0.8, 1.0), vec3(1.0, 0.9, 0.8), hash2(id * 2.0));
         if(hash2(id * 5.0) > 0.95) starCol = vec3(1.0, 0.6, 0.4);
         if(hash2(id * 7.0) > 0.97) starCol = vec3(0.6, 0.7, 1.0);
-        
+
         col += starCol * glow * brightness * twinkle * 0.5;
       }
     }
-    
+
     return col;
   }
   

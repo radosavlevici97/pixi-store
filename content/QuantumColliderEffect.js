@@ -1,50 +1,59 @@
 /**
  * QuantumColliderEffect - Particle Collider Visualization
- * 
+ *
  * Creates a quantum singularity effect where subatomic particles (quarks, gluons,
  * exotic particles) orbit at high speeds leaving colorful trails. Features collision
  * detection with spark bursts and energy ring pulses.
- * 
+ *
  * Pure composition - receives ctx (PixiContext) via constructor, NEVER extends PIXI objects.
  * Uses ctx.classes instead of PIXI. directly.
- * 
+ *
+ * The effect automatically centers itself within the provided width/height bounds
+ * and scales the orbit radii proportionally to fit the container.
+ *
  * @example
  * const effect = new QuantumColliderEffect(ctx, {
  *   container: myContainer,
- *   centerX: 400,
- *   centerY: 300,
+ *   width: 800,
+ *   height: 600,
  *   particleCount: 80
  * });
  * effect.start();
  */
 class QuantumColliderEffect {
   /**
-   * Static defaults for option merging
+   * Static defaults for option merging.
+   * Note: centerX, centerY, and orbit radii are calculated from width/height if not provided.
    */
   static defaults = {
-    centerX: 400,
-    centerY: 300,
-    singularityRadius: 30,
+    width: 800,
+    height: 600,
+    singularityRadius: null, // Calculated as minDimension * 0.04
     particleCount: 80,
-    minOrbitRadius: 60,
-    maxOrbitRadius: 300,
+    minOrbitRadius: null,    // Calculated as minDimension * 0.08
+    maxOrbitRadius: null,    // Calculated as minDimension * 0.4
     baseSpeed: 0.025,
     trailLength: 25,
     ringCount: 4,
     collisionsEnabled: true,
     autoStart: false,
+    // Acceleration settings
+    minSpeedMultiplier: 0.05,  // Starting speed (5% of base - very slow)
+    maxSpeedMultiplier: 2.0,   // Maximum speed (200% of base - medium-high, FPS-friendly)
+    accelerationRate: 0.0033,  // Ramps up over ~5 seconds at 60fps (1/300)
+    accelerationCurve: 'ease', // 'linear' or 'ease' (ease-in-out)
   };
 
   /**
    * @param {PixiContext} ctx - Context from createPixiContext()
    * @param {Object} options - Configuration options
    * @param {PIXI.Container} options.container - Container to add children to
-   * @param {number} [options.centerX=400] - X position of singularity center
-   * @param {number} [options.centerY=300] - Y position of singularity center
-   * @param {number} [options.singularityRadius=30] - Radius of central void
+   * @param {number} [options.width=800] - Effect bounds width (used to calculate center)
+   * @param {number} [options.height=600] - Effect bounds height (used to calculate center)
+   * @param {number} [options.singularityRadius] - Radius of central void (default: minDimension * 0.04)
    * @param {number} [options.particleCount=80] - Number of orbiting particles
-   * @param {number} [options.minOrbitRadius=60] - Minimum orbital distance
-   * @param {number} [options.maxOrbitRadius=300] - Maximum orbital distance
+   * @param {number} [options.minOrbitRadius] - Minimum orbital distance (default: minDimension * 0.08)
+   * @param {number} [options.maxOrbitRadius] - Maximum orbital distance (default: minDimension * 0.4)
    * @param {number} [options.baseSpeed=0.025] - Base orbital speed
    * @param {number} [options.trailLength=25] - Number of trail segments per particle
    * @param {number} [options.ringCount=4] - Number of energy rings
@@ -72,6 +81,26 @@ class QuantumColliderEffect {
 
     // Merge options with defaults
     this.options = { ...QuantumColliderEffect.defaults, ...options };
+
+    // Calculate center and radii from dimensions if not explicitly provided
+    const width = this.options.width;
+    const height = this.options.height;
+    const minDimension = Math.min(width, height);
+
+    // Calculate center (always based on dimensions)
+    this.options.centerX = width / 2;
+    this.options.centerY = height / 2;
+
+    // Calculate radii proportionally if not explicitly provided
+    if (this.options.singularityRadius === null) {
+      this.options.singularityRadius = minDimension * 0.04;
+    }
+    if (this.options.minOrbitRadius === null) {
+      this.options.minOrbitRadius = minDimension * 0.08;
+    }
+    if (this.options.maxOrbitRadius === null) {
+      this.options.maxOrbitRadius = minDimension * 0.4;
+    }
     
     // Particle type definitions (quantum chromodynamics inspired)
     this.particleTypes = [
@@ -91,6 +120,10 @@ class QuantumColliderEffect {
     this._boundUpdate = null;
     this._time = 0;
     this._lastCollisionCheck = 0;
+
+    // Speed acceleration state
+    this._speedProgress = 0; // 0 to 1, representing progress through acceleration
+    this._currentSpeedMultiplier = this.options.minSpeedMultiplier;
     
     // Storage
     this._displayObjects = [];
@@ -463,39 +496,69 @@ class QuantumColliderEffect {
   }
   
   /**
+   * Update speed acceleration
+   * @param {number} delta
+   */
+  _updateAcceleration(delta) {
+    const { minSpeedMultiplier, maxSpeedMultiplier, accelerationRate, accelerationCurve } = this.options;
+
+    // Progress the acceleration (0 to 1)
+    if (this._speedProgress < 1) {
+      this._speedProgress = Math.min(1, this._speedProgress + accelerationRate * delta);
+
+      // Apply easing curve
+      let easedProgress;
+      if (accelerationCurve === 'ease') {
+        // Ease-in-out cubic for smooth acceleration
+        easedProgress = this._speedProgress < 0.5
+          ? 4 * this._speedProgress * this._speedProgress * this._speedProgress
+          : 1 - Math.pow(-2 * this._speedProgress + 2, 3) / 2;
+      } else {
+        // Linear
+        easedProgress = this._speedProgress;
+      }
+
+      // Interpolate between min and max speed
+      this._currentSpeedMultiplier = minSpeedMultiplier +
+        (maxSpeedMultiplier - minSpeedMultiplier) * easedProgress;
+    }
+  }
+
+  /**
    * Update particle positions and trails
    * @param {number} delta
    */
   _updateParticles(delta) {
     const { centerX, centerY } = this.options;
-    
+
     for (const sprite of this._particles) {
       const p = sprite._particle;
-      
-      // Update orbital angle
-      p.angle += p.angularSpeed * delta;
-      
+
+      // Update orbital angle with current speed multiplier
+      p.angle += p.angularSpeed * this._currentSpeedMultiplier * delta;
+
       // Keep angle bounded
       if (p.angle > Math.PI * 2) p.angle -= Math.PI * 2;
       if (p.angle < 0) p.angle += Math.PI * 2;
-      
+
       // Calculate position with helix modulation
       const helixOffset = Math.sin(p.angle * p.helixFrequency + p.helixPhase) * p.helixAmplitude;
       const effectiveRadius = p.orbitRadius + helixOffset;
-      
+
       const x = centerX + Math.cos(p.angle) * effectiveRadius;
       const y = centerY + Math.sin(p.angle) * effectiveRadius;
-      
+
       // Store in trail
       p.trail[p.trailIndex] = { x: sprite.x, y: sprite.y, active: true };
       p.trailIndex = (p.trailIndex + 1) % p.trail.length;
-      
+
       // Update sprite position
       sprite.x = x;
       sprite.y = y;
-      
-      // Subtle pulse
-      const pulse = 1 + Math.sin(this._time * 5 + p.helixPhase) * 0.15;
+
+      // Subtle pulse - intensifies with speed
+      const speedIntensity = 1 + (this._currentSpeedMultiplier - this.options.minSpeedMultiplier) * 0.1;
+      const pulse = 1 + Math.sin(this._time * 5 * speedIntensity + p.helixPhase) * 0.15;
       sprite.alpha = p.baseAlpha * pulse;
     }
   }
@@ -608,23 +671,27 @@ class QuantumColliderEffect {
   _update(ticker) {
     const delta = ticker.deltaTime;
     this._time += delta * 0.016;
-    
+
+    // Update acceleration (ramps speed from slow to fast)
+    this._updateAcceleration(delta);
+
     // Update particles
     this._updateParticles(delta);
-    
+
     // Draw trails
     this._drawTrails();
-    
-    // Check collisions (throttled)
+
+    // Check collisions (throttled) - more frequent at higher speeds
     this._lastCollisionCheck += delta;
-    if (this._lastCollisionCheck > 5) {
+    const collisionThreshold = Math.max(2, 5 - this._currentSpeedMultiplier * 1.5);
+    if (this._lastCollisionCheck > collisionThreshold) {
       this._checkCollisions();
       this._lastCollisionCheck = 0;
     }
-    
+
     // Update sparks
     this._updateSparks(delta);
-    
+
     // Animate rings
     this._animateRings(delta);
   }
@@ -649,23 +716,27 @@ class QuantumColliderEffect {
   reset() {
     this.stop();
     this._time = 0;
-    
+
+    // Reset acceleration to start slow again
+    this._speedProgress = 0;
+    this._currentSpeedMultiplier = this.options.minSpeedMultiplier;
+
     // Reset all particles
     for (const sprite of this._particles) {
       const p = sprite._particle;
       p.angle = Math.random() * Math.PI * 2;
       p.trail.forEach(t => t.active = false);
     }
-    
+
     // Clear sparks
     for (const spark of this._sparks) {
       spark.visible = false;
       spark._spark.active = false;
     }
     this._sparks = [];
-    
+
     this.start();
-    
+
     return this;
   }
   

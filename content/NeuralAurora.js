@@ -1099,6 +1099,14 @@ class SynapticSparks {
  * @param {number} [options.height=600] - Canvas height
  */
 class NeuralAuroraScene {
+  /**
+   * Lifecycle descriptor for demoRunner.
+   * Declares that async setup() must be called before start().
+   */
+  static lifecycle = {
+    setup: true
+  };
+
   static defaults = {
     width: 800,
     height: 600,

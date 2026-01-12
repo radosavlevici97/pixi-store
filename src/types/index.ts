@@ -1,4 +1,4 @@
-import type { Application, Container, Graphics, Sprite, Text, Point, Ticker, Renderer } from 'pixi.js';
+import type { Application, Container, Graphics, Sprite, Text, Point, Ticker, Renderer, Texture, BlurFilter, Rectangle, RenderTexture, TextStyle, Filter, GlProgram } from 'pixi.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
 // PIXI CONTEXT TYPES
@@ -10,12 +10,21 @@ export interface PixiClasses {
   Sprite: typeof Sprite;
   Text: typeof Text;
   Point: typeof Point;
+  Texture: typeof Texture;
+  BlurFilter: typeof BlurFilter;
+  Rectangle: typeof Rectangle;
+  RenderTexture: typeof RenderTexture;
+  TextStyle: typeof TextStyle;
+  Filter: typeof Filter;
+  GlProgram: typeof GlProgram;
 }
 
 export interface PixiCreate {
   container: () => Container;
   graphics: () => Graphics;
+  sprite: (texture?: Texture) => Sprite;
   point: (x?: number, y?: number) => Point;
+  text: (text: string, style?: Partial<TextStyle>) => Text;
 }
 
 export interface GsapModule {
@@ -95,6 +104,56 @@ export interface BaseComponent {
   stop(): void;
   resize?(width: number, height: number): void;
   destroy(): void;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMPONENT LIFECYCLE DESCRIPTOR
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Describes additional lifecycle methods that a component requires.
+ * Used by the demoRunner to correctly initialize and run components.
+ *
+ * Components can define this as a static property:
+ *
+ * @example
+ * class GameOfLife {
+ *   static lifecycle = {
+ *     setup: true,
+ *     init: [{ method: 'randomize', args: [0.3] }]
+ *   };
+ * }
+ */
+export interface ComponentLifecycleDescriptor {
+  /**
+   * If true, the component has a public setup() method that must be called
+   * after construction and before start(). May be async.
+   */
+  setup?: boolean;
+
+  /**
+   * Array of initialization calls to make after setup() but before start().
+   * Each entry specifies a method name and optional arguments.
+   */
+  init?: Array<{
+    method: string;
+    args?: unknown[];
+  }>;
+
+  /**
+   * If explicitly false, start() will NOT be auto-called.
+   * Use this for interactive demos that should wait for user input.
+   * Defaults to true (start is called automatically).
+   */
+  start?: boolean;
+}
+
+/**
+ * Type guard to check if a class has a lifecycle descriptor
+ */
+export interface ComponentClassWithLifecycle {
+  lifecycle?: ComponentLifecycleDescriptor;
+  new (...args: unknown[]): BaseComponent;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

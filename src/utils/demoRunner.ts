@@ -1,7 +1,7 @@
 import * as PIXI from 'pixi.js';
 import gsap from 'gsap';
 import { PixiPlugin } from 'gsap/PixiPlugin';
-import type { ComponentMetadata } from '../types';
+import type { ComponentMetadata, ComponentLifecycleDescriptor } from '../types';
 
 // Register GSAP plugin once
 gsap.registerPlugin(PixiPlugin);
@@ -12,7 +12,69 @@ export interface DemoInstance {
 }
 
 /**
+ * Type for component classes that may have lifecycle descriptors
+ */
+interface ComponentClass {
+  lifecycle?: ComponentLifecycleDescriptor;
+  new (
+    ctx: ReturnType<typeof createPixiContext>,
+    options: { container: PIXI.Container; width: number; height: number }
+  ): ComponentInstance;
+}
+
+/**
+ * Type for instantiated components
+ */
+interface ComponentInstance {
+  start?: () => void;
+  stop?: () => void;
+  destroy?: () => void;
+  setup?: () => Promise<unknown> | unknown;
+  [key: string]: unknown;
+}
+
+/**
+ * Runs the lifecycle methods for a component based on its static lifecycle descriptor.
+ * Falls back to method introspection if no descriptor is provided.
+ *
+ * Lifecycle order:
+ * 1. setup() - if lifecycle.setup is true OR instance has setup method
+ * 2. init[] - custom initialization calls from lifecycle.init
+ * 3. start() - always called if available
+ */
+async function runComponentLifecycle(
+  instance: ComponentInstance,
+  ComponentClass: ComponentClass
+): Promise<void> {
+  const lifecycle = ComponentClass.lifecycle;
+
+  // Step 1: Call setup() if declared or present
+  const shouldCallSetup = lifecycle?.setup ?? typeof instance.setup === 'function';
+  if (shouldCallSetup && typeof instance.setup === 'function') {
+    await instance.setup();
+  }
+
+  // Step 2: Call any custom init methods from lifecycle descriptor
+  if (lifecycle?.init) {
+    for (const initCall of lifecycle.init) {
+      const method = instance[initCall.method];
+      if (typeof method === 'function') {
+        const args = initCall.args ?? [];
+        await (method as (...a: unknown[]) => unknown).apply(instance, args);
+      }
+    }
+  }
+
+  // Step 3: Call start() unless lifecycle.start is explicitly false
+  const shouldCallStart = lifecycle?.start !== false;
+  if (shouldCallStart && typeof instance.start === 'function') {
+    instance.start();
+  }
+}
+
+/**
  * Creates a PixiContext for components that use dependency injection
+ * Includes all PIXI classes that components may need
  */
 function createPixiContext(app: PIXI.Application) {
   return Object.freeze({
@@ -27,11 +89,21 @@ function createPixiContext(app: PIXI.Application) {
       Sprite: PIXI.Sprite,
       Text: PIXI.Text,
       Point: PIXI.Point,
+      Texture: PIXI.Texture,
+      BlurFilter: PIXI.BlurFilter,
+      DisplacementFilter: PIXI.DisplacementFilter,
+      Rectangle: PIXI.Rectangle,
+      RenderTexture: PIXI.RenderTexture,
+      TextStyle: PIXI.TextStyle,
+      Filter: PIXI.Filter,
+      GlProgram: PIXI.GlProgram,
     }),
     create: Object.freeze({
       container: () => new PIXI.Container(),
       graphics: () => new PIXI.Graphics(),
+      sprite: (texture?: PIXI.Texture) => new PIXI.Sprite(texture),
       point: (x = 0, y = 0) => new PIXI.Point(x, y),
+      text: (text: string, style?: Partial<PIXI.TextStyle>) => new PIXI.Text({ text, style }),
     }),
   });
 }
@@ -181,52 +253,123 @@ async function runPixiDemo(
   // Most components export a default that is the main class
   const DefaultExport = module.default;
 
+  let instantiated = false;
+
   if (typeof DefaultExport === 'function') {
+    // Default export is a class - instantiate it directly
     try {
-      // Create a container for the component
       const componentContainer = new PIXI.Container();
       app.stage.addChild(componentContainer);
 
-      const instance = new (DefaultExport as new (
-        ctx: ReturnType<typeof createPixiContext>,
-        options: { container: PIXI.Container; width: number; height: number }
-      ) => { start?: () => void; destroy?: () => void; stop?: () => void })(ctx, {
+      const ComponentClass = DefaultExport as ComponentClass;
+      const instance = new ComponentClass(ctx, {
         container: componentContainer,
         width,
         height,
       });
 
-      if (typeof instance.start === 'function') {
-        instance.start();
-      }
+      await runComponentLifecycle(instance, ComponentClass);
 
       instances.push(instance);
+      instantiated = true;
     } catch (err) {
-      console.warn('Failed to instantiate default export:', err);
-      // Try named exports as fallback
-      await tryNamedExports(module, metadata, ctx, app, width, height, instances);
+      console.error('Failed to instantiate default export:', err);
     }
-  } else {
-    // No default export, try named exports
+  } else if (DefaultExport && typeof DefaultExport === 'object') {
+    // Default export is an object containing multiple classes (e.g., CosmicAurora)
+    // Try to find and instantiate the main component from the object
+    for (const componentName of metadata.components) {
+      const ExportedClass = (DefaultExport as Record<string, unknown>)[componentName];
+      if (typeof ExportedClass === 'function') {
+        try {
+          const componentContainer = new PIXI.Container();
+          app.stage.addChild(componentContainer);
+
+          const ComponentClass = ExportedClass as ComponentClass;
+          const instance = new ComponentClass(ctx, {
+            container: componentContainer,
+            width,
+            height,
+          });
+
+          await runComponentLifecycle(instance, ComponentClass);
+
+          instances.push(instance);
+          instantiated = true;
+          break;
+        } catch (err) {
+          console.warn(`Failed to instantiate ${componentName} from default object:`, err);
+          continue;
+        }
+      }
+    }
+  }
+
+  // If default export didn't work, try named exports
+  if (!instantiated) {
     await tryNamedExports(module, metadata, ctx, app, width, height, instances);
   }
 
-  // Add mouse interactivity for the stage
+  // Add mouse interactivity for components that support it
   let handleMouseMove: ((e: MouseEvent) => void) | null = null;
-  handleMouseMove = (e: MouseEvent) => {
-    const rect = htmlContainer.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    // Store for components that might need it
-    (app.stage as PIXI.Container & { mouseX?: number; mouseY?: number }).mouseX = x;
-    (app.stage as PIXI.Container & { mouseX?: number; mouseY?: number }).mouseY = y;
-  };
-  htmlContainer.addEventListener('mousemove', handleMouseMove);
+  let handleTouchMove: ((e: TouchEvent) => void) | null = null;
+
+  // Check if any instance has setMousePosition
+  const interactiveInstances = instances.filter(
+    (inst): inst is ComponentInstance & { setMousePosition: (x: number, y: number, influence?: number) => void } =>
+      typeof (inst as ComponentInstance).setMousePosition === 'function'
+  );
+
+  if (interactiveInstances.length > 0) {
+    handleMouseMove = (e: MouseEvent) => {
+      const rect = htmlContainer.getBoundingClientRect();
+      // Scale coordinates to match the component's internal dimensions
+      const x = (e.clientX - rect.left) * (width / rect.width);
+      const y = (e.clientY - rect.top) * (height / rect.height);
+
+      // Store on stage for legacy access
+      (app.stage as PIXI.Container & { mouseX?: number; mouseY?: number }).mouseX = x;
+      (app.stage as PIXI.Container & { mouseX?: number; mouseY?: number }).mouseY = y;
+
+      // Call setMousePosition on all interactive components
+      for (const inst of interactiveInstances) {
+        inst.setMousePosition(x, y, 1);
+      }
+    };
+    htmlContainer.addEventListener('mousemove', handleMouseMove);
+
+    // Touch support for mobile
+    handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = htmlContainer.getBoundingClientRect();
+      const x = (touch.clientX - rect.left) * (width / rect.width);
+      const y = (touch.clientY - rect.top) * (height / rect.height);
+
+      for (const inst of interactiveInstances) {
+        inst.setMousePosition(x, y, 1);
+      }
+    };
+    htmlContainer.addEventListener('touchmove', handleTouchMove, { passive: false });
+  } else {
+    // Fallback: just store mouse position on stage
+    handleMouseMove = (e: MouseEvent) => {
+      const rect = htmlContainer.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      (app.stage as PIXI.Container & { mouseX?: number; mouseY?: number }).mouseX = x;
+      (app.stage as PIXI.Container & { mouseX?: number; mouseY?: number }).mouseY = y;
+    };
+    htmlContainer.addEventListener('mousemove', handleMouseMove);
+  }
 
   return {
     destroy: () => {
       if (handleMouseMove) {
         htmlContainer.removeEventListener('mousemove', handleMouseMove);
+      }
+      if (handleTouchMove) {
+        htmlContainer.removeEventListener('touchmove', handleTouchMove);
       }
 
       for (const instance of instances) {
@@ -265,25 +408,21 @@ async function tryNamedExports(
 ): Promise<void> {
   // Try the first component name from metadata
   for (const componentName of metadata.components) {
-    const ComponentClass = module[componentName];
+    const ExportedClass = module[componentName];
 
-    if (typeof ComponentClass === 'function') {
+    if (typeof ExportedClass === 'function') {
       try {
         const componentContainer = new PIXI.Container();
         app.stage.addChild(componentContainer);
 
-        const instance = new (ComponentClass as new (
-          ctx: ReturnType<typeof createPixiContext>,
-          options: { container: PIXI.Container; width: number; height: number }
-        ) => { start?: () => void; destroy?: () => void; stop?: () => void })(ctx, {
+        const ComponentClass = ExportedClass as ComponentClass;
+        const instance = new ComponentClass(ctx, {
           container: componentContainer,
           width,
           height,
         });
 
-        if (typeof instance.start === 'function') {
-          instance.start();
-        }
+        await runComponentLifecycle(instance, ComponentClass);
 
         instances.push(instance);
         return; // Successfully created one component, that's enough for demo
