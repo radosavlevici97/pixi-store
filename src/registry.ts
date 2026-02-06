@@ -1,4 +1,5 @@
 import type { ComponentMetadata } from './types';
+import componentSources from 'virtual:component-sources';
 
 /**
  * Component Registry - Maps metadata to actual content files
@@ -368,11 +369,8 @@ export async function getComponentSource(id: string): Promise<string> {
   const meta = getComponentById(id);
   if (!meta) throw new Error(`Component not found: ${id}`);
 
-  try {
-    const response = await fetch(`/content/${meta.fileName}`);
-    if (!response.ok) throw new Error('Failed to load source');
-    return response.text();
-  } catch {
-    return `// Source code for ${meta.name}\n// File: ${meta.fileName}\n// ${meta.lines} lines`;
-  }
+  const source = componentSources[meta.fileName];
+  if (source) return source;
+
+  return `// Source code for ${meta.name}\n// File: ${meta.fileName}\n// ${meta.lines} lines`;
 }
