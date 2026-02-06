@@ -2,17 +2,16 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * BIOLUMINESCENT GENESIS - Conway's Game of Life Visualization
  * ═══════════════════════════════════════════════════════════════════════════════
- * 
+ *
  * A deep ocean biosphere where cellular automata simulate bioluminescent
  * microorganisms. Each cell pulses, glows, and interacts following the
  * rules of life — birth, death, and survival visualized as organic light
  * patterns in an abyssal void.
- * 
+ *
  * Architecture: Pure composition with PixiContext dependency injection
  * Pattern: ctx.classes for all PIXI instantiation
  * Performance: Double-buffered grid, object pooling for particles
- * 
- * @author Claude (Anthropic)
+ *
  * @version 2.0.0
  * @license MIT
  */

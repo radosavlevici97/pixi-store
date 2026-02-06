@@ -22,9 +22,8 @@
  *   - Neural Purple: #9370db
  * 
  * Architecture: PixiContext dependency injection pattern
- * 
+ *
  * @version 2.0.0
- * @author Claude AI
  * @license MIT
  */
 

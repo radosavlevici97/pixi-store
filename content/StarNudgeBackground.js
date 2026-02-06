@@ -8,8 +8,7 @@
  * Pure composition - receives PixiContext via constructor, NEVER extends PIXI.
  * Uses ctx.classes for all PIXI instantiation (no direct PIXI. usage).
  * 
- * @author Claude AI
- * @version 2.0.0 (PixiContext refactor)
+ * @version 2.0.0
  * @license MIT
  * 
  * Features:

@@ -1,13 +1,5 @@
 /**
  * DeepNeuralNetwork - OPTIMIZED VERSION
- * 
- * Performance improvements:
- * 1. Pre-rendered node glows to RenderTexture (was: 4000+ circles/frame → now: 120 sprites)
- * 2. Spatial hash grid for connections (was: O(n²) → now: O(n))
- * 3. Reduced particle count with larger particles (was: 500 → now: 150)
- * 4. Reduced ring count (was: 24 → now: 12)
- * 5. Batched graphics operations
- * 6. Visibility culling
  */
 
 // ============================================================================
