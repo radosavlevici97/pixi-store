@@ -344,20 +344,33 @@ class QuantumColliderEffect {
       const angle = Math.random() * Math.PI * 2;
       const direction = Math.random() > 0.5 ? 1 : -1;
       
+      // Calculate initial position
+      const helixPhase = Math.random() * Math.PI * 2;
+      const helixAmplitude = 5 + Math.random() * 15;
+      const helixFrequency = 3 + Math.random() * 5;
+      const helixOffset = Math.sin(angle * helixFrequency + helixPhase) * helixAmplitude;
+      const effectiveRadius = orbitRadius + helixOffset;
+      const initX = this.options.centerX + Math.cos(angle) * effectiveRadius;
+      const initY = this.options.centerY + Math.sin(angle) * effectiveRadius;
+
+      // Set sprite to initial position (avoids flash from 0,0)
+      sprite.x = initX;
+      sprite.y = initY;
+
       // Attach particle data
       sprite._particle = {
         type: type,
         orbitRadius: orbitRadius,
         angle: angle,
         angularSpeed: baseSpeed * type.speed * direction * (1 / Math.sqrt(orbitRadius / minOrbitRadius)),
-        helixPhase: Math.random() * Math.PI * 2,
-        helixAmplitude: 5 + Math.random() * 15,
-        helixFrequency: 3 + Math.random() * 5,
-        trail: new Array(trailLength).fill(null).map(() => ({ x: 0, y: 0, active: false })),
+        helixPhase: helixPhase,
+        helixAmplitude: helixAmplitude,
+        helixFrequency: helixFrequency,
+        trail: new Array(trailLength).fill(null).map(() => ({ x: initX, y: initY, active: false })),
         trailIndex: 0,
         baseAlpha: 0.7 + Math.random() * 0.3
       };
-      
+
       this._particleContainer.addChild(sprite);
       this._particles.push(sprite);
     }
